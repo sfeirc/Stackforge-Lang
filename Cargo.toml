@@ -1,0 +1,17 @@
+[package]
+name = "stackforge"
+version = "0.1.0"
+edition = "2021"
+description = "A complete programming language: lexer, Pratt parser, tree-walking interpreter, and stack-based bytecode VM."
+license = "MIT"
+repository = "https://github.com/sfeirc/Stackforge-Lang"
+
+[[bin]]
+name = "stackforge"
+path = "src/main.rs"
+
+[lib]
+name = "stackforge"
+path = "src/lib.rs"
+
+[dependencies]
