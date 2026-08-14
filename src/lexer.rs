@@ -142,3 +142,108 @@ impl<'a> Lexer<'a> {
             None => self.make(TokenKind::Ident(text), line),
         }
     }
+
+    /// Tokenize the whole input, ending with a single `Eof` token.
+    pub fn tokenize(mut self) -> Result<Vec<Token>, SfError> {
+        let mut out = Vec::new();
+        loop {
+            self.skip_whitespace_and_comments();
+            let line = self.line;
+            let c = self.peek();
+            if c == 0 {
+                out.push(self.make(TokenKind::Eof, line));
+                break;
+            }
+            let tok = match c {
+                b'(' => {
+                    self.advance();
+                    self.make(TokenKind::LParen, line)
+                }
+                b')' => {
+                    self.advance();
+                    self.make(TokenKind::RParen, line)
+                }
+                b'{' => {
+                    self.advance();
+                    self.make(TokenKind::LBrace, line)
+                }
+                b'}' => {
+                    self.advance();
+                    self.make(TokenKind::RBrace, line)
+                }
+                b'[' => {
+                    self.advance();
+                    self.make(TokenKind::LBracket, line)
+                }
+                b']' => {
+                    self.advance();
+                    self.make(TokenKind::RBracket, line)
+                }
+                b',' => {
+                    self.advance();
+                    self.make(TokenKind::Comma, line)
+                }
+                b';' => {
+                    self.advance();
+                    self.make(TokenKind::Semicolon, line)
+                }
+                b':' => {
+                    self.advance();
+                    self.make(TokenKind::Colon, line)
+                }
+                b'+' => {
+                    self.advance();
+                    self.make(TokenKind::Plus, line)
+                }
+                b'-' => {
+                    self.advance();
+                    self.make(TokenKind::Minus, line)
+                }
+                b'*' => {
+                    self.advance();
+                    self.make(TokenKind::Star, line)
+                }
+                b'/' => {
+                    self.advance();
+                    self.make(TokenKind::Slash, line)
+                }
+                b'%' => {
+                    self.advance();
+                    self.make(TokenKind::Percent, line)
+                }
+                b'=' => {
+                    self.advance();
+                    if self.peek() == b'=' {
+                        self.advance();
+                        self.make(TokenKind::EqEq, line)
+                    } else {
+                        self.make(TokenKind::Assign, line)
+                    }
+                }
+                b'!' => {
+                    self.advance();
+                    if self.peek() == b'=' {
+                        self.advance();
+                        self.make(TokenKind::NotEq, line)
+                    } else {
+                        self.make(TokenKind::Bang, line)
+                    }
+                }
+                b'<' => {
+                    self.advance();
+                    if self.peek() == b'=' {
+                        self.advance();
+                        self.make(TokenKind::LtEq, line)
+                    } else {
+                        self.make(TokenKind::Lt, line)
+                    }
+                }
+                b'>' => {
+                    self.advance();
+                    if self.peek() == b'=' {
+                        self.advance();
+                        self.make(TokenKind::GtEq, line)
+                    } else {
+                        self.make(TokenKind::Gt, line)
+                    }
+                }
