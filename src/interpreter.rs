@@ -126,3 +126,82 @@ impl<'a> Interpreter<'a> {
             line,
         ))
     }
+
+    fn eval(&mut self, expr: &Expr, scopes: &mut Scopes) -> Result<Value, SfError> {
+        Ok(match expr {
+            Expr::Number(n) => Value::Number(*n),
+            Expr::Str(s) => Value::str(s.clone()),
+            Expr::Bool(b) => Value::Bool(*b),
+            Expr::Nil => Value::Nil,
+            Expr::Ident(name, line) => self.lookup(scopes, name, *line)?,
+            Expr::Array(items) => {
+                let mut vals = Vec::with_capacity(items.len());
+                for it in items {
+                    vals.push(self.eval(it, scopes)?);
+                }
+                Value::array(vals)
+            }
+            Expr::Map(entries) => {
+                let mut vals = Vec::with_capacity(entries.len());
+                for (k, v) in entries {
+                    vals.push((k.clone(), self.eval(v, scopes)?));
+                }
+                Value::map(vals)
+            }
+            Expr::Index(base, idx, line) => {
+                let base_v = self.eval(base, scopes)?;
+                let idx_v = self.eval(idx, scopes)?;
+                index_get(&base_v, &idx_v, *line)?
+            }
+            Expr::Unary(op, operand, line) => {
+                let v = self.eval(operand, scopes)?;
+                match op {
+                    UnOp::Neg => Value::Number(-expect_number(&v, *line)?),
+                    UnOp::Not => Value::Bool(!v.is_truthy()),
+                }
+            }
+            Expr::Binary(op, lhs, rhs, line) => {
+                let l = self.eval(lhs, scopes)?;
+                let r = self.eval(rhs, scopes)?;
+                eval_binary(op, &l, &r, *line)?
+            }
+            Expr::Logical(op, lhs, rhs) => {
+                let l = self.eval(lhs, scopes)?;
+                match op {
+                    LogicOp::And => {
+                        if !l.is_truthy() {
+                            l
+                        } else {
+                            self.eval(rhs, scopes)?
+                        }
+                    }
+                    LogicOp::Or => {
+                        if l.is_truthy() {
+                            l
+                        } else {
+                            self.eval(rhs, scopes)?
+                        }
+                    }
+                }
+            }
+            Expr::Assign(name, value_expr, line) => {
+                let v = self.eval(value_expr, scopes)?;
+                self.assign(scopes, name, v.clone(), *line)?;
+                v
+            }
+            Expr::IndexAssign(base, idx, value_expr, line) => {
+                let base_v = self.eval(base, scopes)?;
+                let idx_v = self.eval(idx, scopes)?;
+                let value = self.eval(value_expr, scopes)?;
+                index_set(&base_v, &idx_v, value.clone(), *line)?;
+                value
+            }
+            Expr::Call(name, arg_exprs, line) => {
+                let mut args = Vec::with_capacity(arg_exprs.len());
+                for a in arg_exprs {
+                    args.push(self.eval(a, scopes)?);
+                }
+                self.call(name, args, *line)?
+            }
+        })
+    }
