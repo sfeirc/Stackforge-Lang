@@ -136,3 +136,145 @@ impl<'a> FnCompiler<'a> {
         }
         Ok(())
     }
+
+    fn compile_expr(&mut self, expr: &Expr) -> Result<(), SfError> {
+        match expr {
+            Expr::Number(n) => {
+                let idx = self.chunk.add_constant(Value::Number(*n));
+                self.chunk.emit(OpCode::PushConst(idx), 0);
+            }
+            Expr::Str(s) => {
+                let idx = self.chunk.add_constant(Value::str(s.clone()));
+                self.chunk.emit(OpCode::PushConst(idx), 0);
+            }
+            Expr::Bool(true) => {
+                self.chunk.emit(OpCode::PushTrue, 0);
+            }
+            Expr::Bool(false) => {
+                self.chunk.emit(OpCode::PushFalse, 0);
+            }
+            Expr::Nil => {
+                self.chunk.emit(OpCode::PushNil, 0);
+            }
+            Expr::Ident(name, line) => match self.resolve_local(name) {
+                Some(slot) => {
+                    self.chunk.emit(OpCode::GetLocal(slot), *line);
+                }
+                None => return Err(SfError::compile(format!("undefined variable '{}'", name), *line)),
+            },
+            Expr::Array(items) => {
+                for it in items {
+                    self.compile_expr(it)?;
+                }
+                self.chunk.emit(OpCode::BuildArray(items.len()), 0);
+            }
+            Expr::Map(entries) => {
+                for (k, v) in entries {
+                    let idx = self.chunk.add_constant(Value::str(k.clone()));
+                    self.chunk.emit(OpCode::PushConst(idx), 0);
+                    self.compile_expr(v)?;
+                }
+                self.chunk.emit(OpCode::BuildMap(entries.len()), 0);
+            }
+            Expr::Index(base, idx, line) => {
+                self.compile_expr(base)?;
+                self.compile_expr(idx)?;
+                self.chunk.emit(OpCode::IndexGet, *line);
+            }
+            Expr::Unary(op, operand, line) => {
+                self.compile_expr(operand)?;
+                match op {
+                    UnOp::Neg => {
+                        self.chunk.emit(OpCode::Neg, *line);
+                    }
+                    UnOp::Not => {
+                        self.chunk.emit(OpCode::Not, *line);
+                    }
+                }
+            }
+            Expr::Binary(op, lhs, rhs, line) => {
+                self.compile_expr(lhs)?;
+                self.compile_expr(rhs)?;
+                let opcode = match op {
+                    BinOp::Add => OpCode::Add,
+                    BinOp::Sub => OpCode::Sub,
+                    BinOp::Mul => OpCode::Mul,
+                    BinOp::Div => OpCode::Div,
+                    BinOp::Mod => OpCode::Mod,
+                    BinOp::Eq => OpCode::Eq,
+                    BinOp::NotEq => OpCode::NotEq,
+                    BinOp::Lt => OpCode::Lt,
+                    BinOp::LtEq => OpCode::LtEq,
+                    BinOp::Gt => OpCode::Gt,
+                    BinOp::GtEq => OpCode::GtEq,
+                };
+                self.chunk.emit(opcode, *line);
+            }
+            Expr::Logical(op, lhs, rhs) => {
+                self.compile_expr(lhs)?;
+                match op {
+                    LogicOp::And => {
+                        let jump = self.chunk.emit(OpCode::JumpIfFalsePeek(0), 0);
+                        self.chunk.emit(OpCode::Pop, 0);
+                        self.compile_expr(rhs)?;
+                        let target = self.chunk.here();
+                        self.chunk.patch_jump(jump, target);
+                    }
+                    LogicOp::Or => {
+                        let jump = self.chunk.emit(OpCode::JumpIfTruePeek(0), 0);
+                        self.chunk.emit(OpCode::Pop, 0);
+                        self.compile_expr(rhs)?;
+                        let target = self.chunk.here();
+                        self.chunk.patch_jump(jump, target);
+                    }
+                }
+            }
+            Expr::Assign(name, value, line) => {
+                self.compile_expr(value)?;
+                match self.resolve_local(name) {
+                    Some(slot) => {
+                        self.chunk.emit(OpCode::SetLocal(slot), *line);
+                    }
+                    None => {
+                        return Err(SfError::compile(
+                            format!("assignment to undefined variable '{}'", name),
+                            *line,
+                        ))
+                    }
+                }
+            }
+            Expr::IndexAssign(base, idx, value, line) => {
+                self.compile_expr(base)?;
+                self.compile_expr(idx)?;
+                self.compile_expr(value)?;
+                self.chunk.emit(OpCode::IndexSet, *line);
+            }
+            Expr::Call(name, args, line) => {
+                if let Some(id) = builtins::builtin_id(name) {
+                    for a in args {
+                        self.compile_expr(a)?;
+                    }
+                    self.chunk.emit(OpCode::CallBuiltin(id, args.len() as u8), *line);
+                } else if let Some((idx, arity)) = self.func_table.get(name).copied() {
+                    if arity != args.len() {
+                        return Err(SfError::compile(
+                            format!(
+                                "function '{}' expects {} argument(s), got {}",
+                                name,
+                                arity,
+                                args.len()
+                            ),
+                            *line,
+                        ));
+                    }
+                    for a in args {
+                        self.compile_expr(a)?;
+                    }
+                    self.chunk.emit(OpCode::Call(idx, args.len() as u8), *line);
+                } else {
+                    return Err(SfError::compile(format!("undefined function '{}'", name), *line));
+                }
+            }
+        }
+        Ok(())
+    }
