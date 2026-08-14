@@ -1,0 +1,15 @@
+// Arrays and a basic string-keyed hash map.
+let squares = [];
+for (let i = 0; i < 5; i = i + 1) {
+    push(squares, i * i);
+}
+print squares;
+
+let config = {"name": "stackforge", "version": 1};
+print config["name"], config["version"];
+
+let total = 0;
+for (let i = 0; i < len(squares); i = i + 1) {
+    total = total + squares[i];
+}
+print total;

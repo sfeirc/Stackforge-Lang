@@ -1,0 +1,10 @@
+// Intentionally triggers a runtime division-by-zero error on the second
+// call. Used by tests/integration.rs to check that the error is caught
+// (not a panic) and reported with the line of the division itself, not
+// the call site. This file is NOT run by the CLI/Docker demo.
+fn divide(a, b) {
+    return a / b;
+}
+
+print divide(10, 2);
+print divide(5, 0);

@@ -1,0 +1,60 @@
+// Stackforge demo: a tour of every language feature in one program.
+// This is what `docker run` and the CI "run the demo" step execute.
+
+fn fib(n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn factorial(n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+fn is_even(n) {
+    if (n == 0) {
+        return true;
+    }
+    return is_odd(n - 1);
+}
+
+fn is_odd(n) {
+    if (n == 0) {
+        return false;
+    }
+    return is_even(n - 1);
+}
+
+print "=== fibonacci(0..9) ===";
+for (let i = 0; i < 10; i = i + 1) {
+    print fib(i);
+}
+
+print "=== factorial(10) ===";
+print factorial(10);
+
+print "=== accumulator: sum 1..100 ===";
+let sum = 0;
+for (let i = 1; i <= 100; i = i + 1) {
+    sum = sum + i;
+}
+print sum;
+
+print "=== mutual recursion: is_even/is_odd ===";
+print is_even(10), is_odd(10), is_even(7), is_odd(7);
+
+print "=== arrays and maps ===";
+let squares = [];
+for (let i = 0; i < 5; i = i + 1) {
+    push(squares, i * i);
+}
+print squares;
+
+let config = {"name": "stackforge", "version": 1};
+print config["name"], config["version"];
+
+print "=== done ===";

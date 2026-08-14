@@ -1,0 +1,10 @@
+// Intentionally malformed: missing ';' after the let-binding. Used by
+// tests/integration.rs to check that the parser reports a syntax error
+// with the correct line number, not just "parse error somewhere". This
+// file is NOT run by the CLI/Docker demo -- it exists to be rejected.
+fn broken(a, b) {
+    let x = a + b
+    return x;
+}
+
+print broken(1, 2);
