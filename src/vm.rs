@@ -242,3 +242,84 @@ impl<'a> Vm<'a> {
         self.push(v);
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compiler::compile;
+    use crate::parser::parse;
+
+    fn run_capture(src: &str) -> String {
+        let program = parse(src).unwrap();
+        let functions = compile(&program).unwrap();
+        let mut out = Vec::new();
+        {
+            let mut vm = Vm::new(functions, &mut out);
+            vm.run().unwrap();
+        }
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn runs_straight_line_arithmetic() {
+        assert_eq!(run_capture("print 1 + 2 * 3;"), "7\n");
+    }
+
+    #[test]
+    fn runs_recursive_fibonacci() {
+        let src = r#"
+            fn fib(n) {
+                if (n < 2) { return n; }
+                return fib(n - 1) + fib(n - 2);
+            }
+            print fib(10);
+        "#;
+        assert_eq!(run_capture(src), "55\n");
+    }
+
+    #[test]
+    fn stack_is_balanced_after_a_full_program() {
+        let src = r#"
+            fn add(a, b) { return a + b; }
+            let total = 0;
+            for (let i = 0; i < 10; i = i + 1) {
+                total = add(total, i);
+            }
+            let arr = [1, 2, 3];
+            arr[0] = 99;
+            let m = {"a": 1, "b": 2};
+            if (total > 0 && len(arr) == 3) {
+                print total, arr[0], m["a"];
+            }
+        "#;
+        let program = parse(src).unwrap();
+        let functions = compile(&program).unwrap();
+        let mut out = Vec::new();
+        let mut vm = Vm::new(functions, &mut out);
+        vm.run().unwrap();
+        assert_eq!(vm.stack.len(), 0, "operand stack leaked values: {:?}", vm.stack);
+    }
+
+    #[test]
+    fn division_by_zero_is_a_runtime_error_with_line() {
+        let program = parse("let x = 1;\nlet y = x / 0;").unwrap();
+        let functions = compile(&program).unwrap();
+        let mut out = Vec::new();
+        let mut vm = Vm::new(functions, &mut out);
+        let err = vm.run().unwrap_err();
+        match err {
+            SfError::Runtime { line, .. } => assert_eq!(line, 2),
+            other => panic!("expected Runtime error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn array_out_of_bounds_is_a_runtime_error() {
+        let program = parse("let a = [1, 2]; let x = a[5];").unwrap();
+        let functions = compile(&program).unwrap();
+        let mut out = Vec::new();
+        let mut vm = Vm::new(functions, &mut out);
+        assert!(matches!(vm.run().unwrap_err(), SfError::Runtime { .. }));
+    }
+}
