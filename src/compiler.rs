@@ -334,3 +334,100 @@ pub fn compile(program: &Program) -> Result<Vec<Rc<FunctionObj>>, SfError> {
 
     Ok(functions)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse;
+
+    fn compile_src(src: &str) -> Vec<Rc<FunctionObj>> {
+        compile(&parse(src).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn compiles_simple_arithmetic_to_expected_opcodes() {
+        let functions = compile_src("let x = 1 + 2 * 3;");
+        let main = &functions[0].chunk;
+        assert_eq!(
+            main.code,
+            vec![
+                OpCode::PushConst(0), // 1
+                OpCode::PushConst(1), // 2
+                OpCode::PushConst(2), // 3
+                OpCode::Mul,
+                OpCode::Add,
+                // declaring `x` costs no extra opcode: the value is already
+                // on the stack at the right slot.
+                OpCode::PushNil,
+                OpCode::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn if_else_compiles_to_jump_if_false_and_jump() {
+        let functions = compile_src("if (true) { print 1; } else { print 2; }");
+        let main = &functions[0].chunk;
+        assert_eq!(
+            main.code,
+            vec![
+                OpCode::PushTrue,
+                OpCode::JumpIfFalse(5),
+                OpCode::PushConst(0),
+                OpCode::Print(1),
+                OpCode::Jump(7),
+                OpCode::PushConst(1),
+                OpCode::Print(1),
+                OpCode::PushNil,
+                OpCode::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn while_loop_jumps_back_to_condition() {
+        let functions = compile_src("while (true) { print 1; }");
+        let main = &functions[0].chunk;
+        // loop_start=0: PushTrue, JumpIfFalse(exit), PushConst, Print, Jump(0), exit: PushNil, Return
+        assert_eq!(main.code[0], OpCode::PushTrue);
+        assert!(matches!(main.code[1], OpCode::JumpIfFalse(_)));
+        assert_eq!(main.code[main.code.len() - 3], OpCode::Jump(0));
+    }
+
+    #[test]
+    fn function_call_resolves_to_call_opcode_with_index() {
+        let functions = compile_src("fn double(x) { return x * 2; } let y = double(21);");
+        assert_eq!(functions.len(), 2); // main + double
+        let main = &functions[0].chunk;
+        assert!(main.code.iter().any(|op| matches!(op, OpCode::Call(1, 1))));
+    }
+
+    #[test]
+    fn undefined_variable_is_a_compile_error() {
+        let err = compile(&parse("let x = y + 1;").unwrap()).unwrap_err();
+        assert!(matches!(err, SfError::Compile { .. }));
+    }
+
+    #[test]
+    fn undefined_function_is_a_compile_error() {
+        let err = compile(&parse("let x = mystery(1);").unwrap()).unwrap_err();
+        assert!(matches!(err, SfError::Compile { .. }));
+    }
+
+    #[test]
+    fn wrong_arity_call_is_a_compile_error() {
+        let err = compile(&parse("fn add(a, b) { return a + b; } let x = add(1);").unwrap()).unwrap_err();
+        match err {
+            SfError::Compile { message, .. } => assert!(message.contains("expects 2")),
+            other => panic!("expected Compile error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn block_scope_emits_pop_for_each_local_on_exit() {
+        let functions = compile_src("{ let a = 1; let b = 2; }");
+        let main = &functions[0].chunk;
+        let pop_count = main.code.iter().filter(|op| matches!(op, OpCode::Pop)).count();
+        assert_eq!(pop_count, 2);
+    }
+}
