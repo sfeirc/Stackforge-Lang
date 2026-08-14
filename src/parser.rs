@@ -427,3 +427,155 @@ pub fn parse(src: &str) -> Result<Program, SfError> {
     let tokens = lex(src)?;
     Parser::new(tokens).parse_program()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_arithmetic_precedence_correctly() {
+        // 1 + 2 * 3 must parse as 1 + (2 * 3), not (1 + 2) * 3.
+        let prog = parse("let x = 1 + 2 * 3;").unwrap();
+        match &prog.main[0] {
+            Stmt::Let(name, Expr::Binary(BinOp::Add, lhs, rhs, _), _) => {
+                assert_eq!(name, "x");
+                assert_eq!(**lhs, Expr::Number(1.0));
+                assert_eq!(
+                    **rhs,
+                    Expr::Binary(
+                        BinOp::Mul,
+                        Box::new(Expr::Number(2.0)),
+                        Box::new(Expr::Number(3.0)),
+                        1
+                    )
+                );
+            }
+            other => panic!("unexpected AST: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_comparison_binding_looser_than_arithmetic() {
+        let prog = parse("let x = 1 + 2 < 3 * 4;").unwrap();
+        match &prog.main[0] {
+            Stmt::Let(_, Expr::Binary(BinOp::Lt, lhs, rhs, _), _) => {
+                assert_eq!(
+                    **lhs,
+                    Expr::Binary(
+                        BinOp::Add,
+                        Box::new(Expr::Number(1.0)),
+                        Box::new(Expr::Number(2.0)),
+                        1
+                    )
+                );
+                assert_eq!(
+                    **rhs,
+                    Expr::Binary(
+                        BinOp::Mul,
+                        Box::new(Expr::Number(3.0)),
+                        Box::new(Expr::Number(4.0)),
+                        1
+                    )
+                );
+            }
+            other => panic!("unexpected AST: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_logical_and_looser_than_equality_but_tighter_than_or() {
+        let prog = parse("let x = a == 1 || b == 2 && c == 3;").unwrap();
+        // Expect: a==1 || (b==2 && c==3)
+        match &prog.main[0] {
+            Stmt::Let(_, Expr::Logical(LogicOp::Or, lhs, rhs), _) => {
+                assert_eq!(
+                    **lhs,
+                    Expr::Binary(
+                        BinOp::Eq,
+                        Box::new(Expr::Ident("a".into(), 1)),
+                        Box::new(Expr::Number(1.0)),
+                        1
+                    )
+                );
+                match &**rhs {
+                    Expr::Logical(LogicOp::And, _, _) => {}
+                    other => panic!("expected && on the right of ||, got {:?}", other),
+                }
+            }
+            other => panic!("unexpected AST: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_right_associative_assignment_chain() {
+        let prog = parse("y = x = 5;").unwrap();
+        match &prog.main[0] {
+            Stmt::ExprStmt(Expr::Assign(name, inner, _)) => {
+                assert_eq!(name, "y");
+                assert_eq!(**inner, Expr::Assign("x".into(), Box::new(Expr::Number(5.0)), 1));
+            }
+            other => panic!("unexpected AST: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_function_declaration_with_params_and_return() {
+        let prog = parse("fn add(a, b) { return a + b; }").unwrap();
+        assert_eq!(prog.functions.len(), 1);
+        let f = &prog.functions[0];
+        assert_eq!(f.name, "add");
+        assert_eq!(f.params, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(f.body.len(), 1);
+    }
+
+    #[test]
+    fn parses_array_and_index_expressions() {
+        let prog = parse("let a = [1, 2, 3]; let b = a[0];").unwrap();
+        assert_eq!(
+            prog.main[0],
+            Stmt::Let(
+                "a".into(),
+                Expr::Array(vec![Expr::Number(1.0), Expr::Number(2.0), Expr::Number(3.0)]),
+                1
+            )
+        );
+        match &prog.main[1] {
+            Stmt::Let(_, Expr::Index(arr, idx, _), _) => {
+                assert_eq!(**arr, Expr::Ident("a".into(), 1));
+                assert_eq!(**idx, Expr::Number(0.0));
+            }
+            other => panic!("unexpected AST: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn for_loop_desugars_to_block_with_init_and_while() {
+        let prog = parse("for (let i = 0; i < 3; i = i + 1) { print i; }").unwrap();
+        match &prog.main[0] {
+            Stmt::Block(stmts) => {
+                assert_eq!(stmts.len(), 2);
+                assert!(matches!(stmts[0], Stmt::Let(..)));
+                match &stmts[1] {
+                    Stmt::While(_, body) => assert_eq!(body.len(), 2), // print + post-increment
+                    other => panic!("expected While, got {:?}", other),
+                }
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn missing_semicolon_reports_syntax_error_with_line_number() {
+        let err = parse("let x = 1\nlet y = 2;").unwrap_err();
+        match err {
+            SfError::Parse { line, .. } => assert_eq!(line, 2),
+            other => panic!("expected Parse error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn unclosed_paren_reports_syntax_error() {
+        let err = parse("let x = (1 + 2;").unwrap_err();
+        assert!(matches!(err, SfError::Parse { .. }));
+    }
+}
