@@ -114,3 +114,36 @@ impl PartialEq for Value {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_formats_integral_numbers_without_decimal_point() {
+        assert_eq!(Value::Number(3.0).to_string(), "3");
+        assert_eq!(Value::Number(3.5).to_string(), "3.5");
+    }
+
+    #[test]
+    fn truthiness_matches_ruby_style_rules() {
+        assert!(Value::Number(0.0).is_truthy());
+        assert!(Value::str("").is_truthy());
+        assert!(!Value::Bool(false).is_truthy());
+        assert!(!Value::Nil.is_truthy());
+    }
+
+    #[test]
+    fn arrays_are_reference_types() {
+        let a = Value::array(vec![Value::Number(1.0)]);
+        let b = a.clone();
+        if let Value::Array(cell) = &b {
+            cell.borrow_mut().push(Value::Number(2.0));
+        }
+        if let Value::Array(cell) = &a {
+            assert_eq!(cell.borrow().len(), 2);
+        } else {
+            panic!("expected array");
+        }
+    }
+}
