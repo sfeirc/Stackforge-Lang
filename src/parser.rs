@@ -421,3 +421,9 @@ impl Parser {
         }
         Ok(args)
     }
+}
+
+pub fn parse(src: &str) -> Result<Program, SfError> {
+    let tokens = lex(src)?;
+    Parser::new(tokens).parse_program()
+}
