@@ -142,3 +142,106 @@ impl Parser {
         self.expect(&TokenKind::RBrace, "'}'")?;
         Ok(stmts)
     }
+
+    // ---------------------------------------------------------------- //
+    // Statements
+    // ---------------------------------------------------------------- //
+
+    fn parse_statement(&mut self) -> Result<Stmt, SfError> {
+        match &self.peek().kind {
+            TokenKind::Let => self.parse_let(),
+            TokenKind::Print => self.parse_print(),
+            TokenKind::If => self.parse_if(),
+            TokenKind::While => self.parse_while(),
+            TokenKind::For => self.parse_for(),
+            TokenKind::Return => self.parse_return(),
+            TokenKind::LBrace => Ok(Stmt::Block(self.parse_block()?)),
+            _ => self.parse_expr_stmt(),
+        }
+    }
+
+    fn parse_let(&mut self) -> Result<Stmt, SfError> {
+        let line = self.line();
+        self.advance(); // 'let'
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::Assign, "'=' in let binding")?;
+        let value = self.parse_expression()?;
+        self.expect(&TokenKind::Semicolon, "';' after let binding")?;
+        Ok(Stmt::Let(name, value, line))
+    }
+
+    fn parse_print(&mut self) -> Result<Stmt, SfError> {
+        let line = self.line();
+        self.advance(); // 'print'
+        let mut args = vec![self.parse_expression()?];
+        while self.match_tok(&TokenKind::Comma) {
+            args.push(self.parse_expression()?);
+        }
+        self.expect(&TokenKind::Semicolon, "';' after print statement")?;
+        Ok(Stmt::Print(args, line))
+    }
+
+    fn parse_if(&mut self) -> Result<Stmt, SfError> {
+        self.advance(); // 'if'
+        self.expect(&TokenKind::LParen, "'(' after if")?;
+        let cond = self.parse_expression()?;
+        self.expect(&TokenKind::RParen, "')' after if condition")?;
+        let then_branch = self.parse_block()?;
+        let else_branch = if self.match_tok(&TokenKind::Else) {
+            if self.check(&TokenKind::If) {
+                vec![self.parse_if()?]
+            } else {
+                self.parse_block()?
+            }
+        } else {
+            Vec::new()
+        };
+        Ok(Stmt::If(cond, then_branch, else_branch))
+    }
+
+    fn parse_while(&mut self) -> Result<Stmt, SfError> {
+        self.advance(); // 'while'
+        self.expect(&TokenKind::LParen, "'(' after while")?;
+        let cond = self.parse_expression()?;
+        self.expect(&TokenKind::RParen, "')' after while condition")?;
+        let body = self.parse_block()?;
+        Ok(Stmt::While(cond, body))
+    }
+
+    /// Desugars `for (init; cond; post) { body }` into
+    /// `{ init; while (cond) { body; post; } }` so the compiler and
+    /// interpreter only ever have to know about `While` and `Block`.
+    fn parse_for(&mut self) -> Result<Stmt, SfError> {
+        self.advance(); // 'for'
+        self.expect(&TokenKind::LParen, "'(' after for")?;
+        let init = if self.check(&TokenKind::Let) {
+            self.parse_let()?
+        } else {
+            self.parse_expr_stmt()?
+        };
+        let cond = self.parse_expression()?;
+        self.expect(&TokenKind::Semicolon, "';' after for condition")?;
+        let post = self.parse_expression()?;
+        self.expect(&TokenKind::RParen, "')' after for clauses")?;
+        let mut body = self.parse_block()?;
+        body.push(Stmt::ExprStmt(post));
+        Ok(Stmt::Block(vec![init, Stmt::While(cond, body)]))
+    }
+
+    fn parse_return(&mut self) -> Result<Stmt, SfError> {
+        let line = self.line();
+        self.advance(); // 'return'
+        let value = if self.check(&TokenKind::Semicolon) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+        self.expect(&TokenKind::Semicolon, "';' after return")?;
+        Ok(Stmt::Return(value, line))
+    }
+
+    fn parse_expr_stmt(&mut self) -> Result<Stmt, SfError> {
+        let expr = self.parse_expression()?;
+        self.expect(&TokenKind::Semicolon, "';' after expression")?;
+        Ok(Stmt::ExprStmt(expr))
+    }
