@@ -245,3 +245,89 @@ impl Parser {
         self.expect(&TokenKind::Semicolon, "';' after expression")?;
         Ok(Stmt::ExprStmt(expr))
     }
+
+    // ---------------------------------------------------------------- //
+    // Expressions
+    // ---------------------------------------------------------------- //
+
+    fn parse_expression(&mut self) -> Result<Expr, SfError> {
+        self.parse_assignment()
+    }
+
+    fn parse_assignment(&mut self) -> Result<Expr, SfError> {
+        let line = self.line();
+        let target = self.parse_expr_bp(1)?;
+        if self.check(&TokenKind::Assign) {
+            self.advance();
+            let value = self.parse_assignment()?; // right-associative
+            return match target {
+                Expr::Ident(name, _) => Ok(Expr::Assign(name, Box::new(value), line)),
+                Expr::Index(arr, idx, iline) => Ok(Expr::IndexAssign(arr, idx, Box::new(value), iline)),
+                _ => Err(SfError::parse("invalid assignment target", line)),
+            };
+        }
+        Ok(target)
+    }
+
+    fn parse_expr_bp(&mut self, min_bp: u8) -> Result<Expr, SfError> {
+        let mut lhs = self.parse_unary()?;
+        loop {
+            let kind = self.peek().kind.clone();
+            let (l_bp, r_bp) = match infix_binding_power(&kind) {
+                Some(bp) => bp,
+                None => break,
+            };
+            if l_bp < min_bp {
+                break;
+            }
+            let line = self.line();
+            self.advance();
+            let rhs = self.parse_expr_bp(r_bp)?;
+            lhs = match kind {
+                TokenKind::OrOr => Expr::Logical(LogicOp::Or, Box::new(lhs), Box::new(rhs)),
+                TokenKind::AndAnd => Expr::Logical(LogicOp::And, Box::new(lhs), Box::new(rhs)),
+                TokenKind::EqEq => Expr::Binary(BinOp::Eq, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::NotEq => Expr::Binary(BinOp::NotEq, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Lt => Expr::Binary(BinOp::Lt, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::LtEq => Expr::Binary(BinOp::LtEq, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Gt => Expr::Binary(BinOp::Gt, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::GtEq => Expr::Binary(BinOp::GtEq, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Plus => Expr::Binary(BinOp::Add, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Minus => Expr::Binary(BinOp::Sub, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Star => Expr::Binary(BinOp::Mul, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Slash => Expr::Binary(BinOp::Div, Box::new(lhs), Box::new(rhs), line),
+                TokenKind::Percent => Expr::Binary(BinOp::Mod, Box::new(lhs), Box::new(rhs), line),
+                _ => unreachable!("infix_binding_power and this match must stay in sync"),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, SfError> {
+        let line = self.line();
+        if self.match_tok(&TokenKind::Bang) {
+            let operand = self.parse_unary()?;
+            return Ok(Expr::Unary(UnOp::Not, Box::new(operand), line));
+        }
+        if self.match_tok(&TokenKind::Minus) {
+            let operand = self.parse_unary()?;
+            return Ok(Expr::Unary(UnOp::Neg, Box::new(operand), line));
+        }
+        self.parse_postfix()
+    }
+
+    fn parse_postfix(&mut self) -> Result<Expr, SfError> {
+        let mut expr = self.parse_primary()?;
+        loop {
+            if self.check(&TokenKind::LBracket) {
+                let line = self.line();
+                self.advance();
+                let index = self.parse_expression()?;
+                self.expect(&TokenKind::RBracket, "']' after index expression")?;
+                expr = Expr::Index(Box::new(expr), Box::new(index), line);
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
