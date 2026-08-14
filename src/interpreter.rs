@@ -241,3 +241,96 @@ fn expect_number(v: &Value, line: u32) -> Result<f64, SfError> {
     v.as_number()
         .ok_or_else(|| SfError::runtime(format!("expected a number, got {}", v.type_name()), line))
 }
+
+pub(crate) fn eval_binary(op: &BinOp, l: &Value, r: &Value, line: u32) -> Result<Value, SfError> {
+    use BinOp::*;
+    Ok(match op {
+        Add => match (l, r) {
+            (Value::Number(a), Value::Number(b)) => Value::Number(a + b),
+            (Value::Str(a), Value::Str(b)) => Value::str(format!("{}{}", a, b)),
+            (Value::Str(a), b) => Value::str(format!("{}{}", a, b)),
+            _ => {
+                return Err(SfError::runtime(
+                    format!("cannot add {} and {}", l.type_name(), r.type_name()),
+                    line,
+                ))
+            }
+        },
+        Sub => Value::Number(expect_number(l, line)? - expect_number(r, line)?),
+        Mul => Value::Number(expect_number(l, line)? * expect_number(r, line)?),
+        Div => {
+            let rhs = expect_number(r, line)?;
+            if rhs == 0.0 {
+                return Err(SfError::runtime("division by zero", line));
+            }
+            Value::Number(expect_number(l, line)? / rhs)
+        }
+        Mod => {
+            let rhs = expect_number(r, line)?;
+            if rhs == 0.0 {
+                return Err(SfError::runtime("modulo by zero", line));
+            }
+            Value::Number(expect_number(l, line)? % rhs)
+        }
+        Eq => Value::Bool(l == r),
+        NotEq => Value::Bool(l != r),
+        Lt => Value::Bool(expect_number(l, line)? < expect_number(r, line)?),
+        LtEq => Value::Bool(expect_number(l, line)? <= expect_number(r, line)?),
+        Gt => Value::Bool(expect_number(l, line)? > expect_number(r, line)?),
+        GtEq => Value::Bool(expect_number(l, line)? >= expect_number(r, line)?),
+    })
+}
+
+pub(crate) fn index_get(base: &Value, idx: &Value, line: u32) -> Result<Value, SfError> {
+    match base {
+        Value::Array(items) => {
+            let i = expect_number(idx, line)?;
+            let items = items.borrow();
+            let idx = i as i64;
+            if idx < 0 || idx as usize >= items.len() {
+                return Err(SfError::runtime(
+                    format!("array index {} out of bounds (length {})", idx, items.len()),
+                    line,
+                ));
+            }
+            Ok(items[idx as usize].clone())
+        }
+        Value::Map(map) => match idx {
+            Value::Str(key) => Ok(map.borrow().get(key.as_str()).cloned().unwrap_or(Value::Nil)),
+            _ => Err(SfError::runtime("map keys must be strings", line)),
+        },
+        _ => Err(SfError::runtime(
+            format!("cannot index into a {}", base.type_name()),
+            line,
+        )),
+    }
+}
+
+pub(crate) fn index_set(base: &Value, idx: &Value, value: Value, line: u32) -> Result<(), SfError> {
+    match base {
+        Value::Array(items) => {
+            let i = expect_number(idx, line)?;
+            let mut items = items.borrow_mut();
+            let idx = i as i64;
+            if idx < 0 || idx as usize >= items.len() {
+                return Err(SfError::runtime(
+                    format!("array index {} out of bounds (length {})", idx, items.len()),
+                    line,
+                ));
+            }
+            items[idx as usize] = value;
+            Ok(())
+        }
+        Value::Map(map) => match idx {
+            Value::Str(key) => {
+                map.borrow_mut().insert(key.to_string(), value);
+                Ok(())
+            }
+            _ => Err(SfError::runtime("map keys must be strings", line)),
+        },
+        _ => Err(SfError::runtime(
+            format!("cannot index into a {}", base.type_name()),
+            line,
+        )),
+    }
+}
