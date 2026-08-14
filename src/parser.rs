@@ -331,3 +331,93 @@ impl Parser {
         }
         Ok(expr)
     }
+
+    fn parse_primary(&mut self) -> Result<Expr, SfError> {
+        let line = self.line();
+        let tok = self.peek().kind.clone();
+        match tok {
+            TokenKind::Number(n) => {
+                self.advance();
+                Ok(Expr::Number(n))
+            }
+            TokenKind::Str(s) => {
+                self.advance();
+                Ok(Expr::Str(s))
+            }
+            TokenKind::True => {
+                self.advance();
+                Ok(Expr::Bool(true))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(Expr::Bool(false))
+            }
+            TokenKind::Nil => {
+                self.advance();
+                Ok(Expr::Nil)
+            }
+            TokenKind::Ident(name) => {
+                self.advance();
+                if self.check(&TokenKind::LParen) {
+                    self.advance();
+                    let args = self.parse_args()?;
+                    self.expect(&TokenKind::RParen, "')' after call arguments")?;
+                    Ok(Expr::Call(name, args, line))
+                } else {
+                    Ok(Expr::Ident(name, line))
+                }
+            }
+            TokenKind::LParen => {
+                self.advance();
+                let expr = self.parse_expression()?;
+                self.expect(&TokenKind::RParen, "')' after parenthesized expression")?;
+                Ok(expr)
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let items = self.parse_args()?;
+                self.expect(&TokenKind::RBracket, "']' after array literal")?;
+                Ok(Expr::Array(items))
+            }
+            TokenKind::LBrace => {
+                self.advance();
+                let mut entries = Vec::new();
+                if !self.check(&TokenKind::RBrace) {
+                    loop {
+                        let key = match &self.peek().kind {
+                            TokenKind::Str(s) => s.clone(),
+                            other => {
+                                return Err(SfError::parse(
+                                    format!("expected string key in map literal, found {:?}", other),
+                                    self.line(),
+                                ))
+                            }
+                        };
+                        self.advance();
+                        self.expect(&TokenKind::Colon, "':' after map key")?;
+                        let value = self.parse_expression()?;
+                        entries.push((key, value));
+                        if !self.match_tok(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&TokenKind::RBrace, "'}' after map literal")?;
+                Ok(Expr::Map(entries))
+            }
+            other => Err(SfError::parse(format!("unexpected token {:?}", other), line)),
+        }
+    }
+
+    fn parse_args(&mut self) -> Result<Vec<Expr>, SfError> {
+        let mut args = Vec::new();
+        if !self.check(&TokenKind::RParen) && !self.check(&TokenKind::RBracket) {
+            loop {
+                args.push(self.parse_expression()?);
+                if !self.match_tok(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        Ok(args)
+    }
