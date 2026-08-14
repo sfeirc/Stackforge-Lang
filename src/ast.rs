@@ -45,3 +45,17 @@ pub enum Expr {
     IndexAssign(Box<Expr>, Box<Expr>, Box<Expr>, u32),
     Call(String, Vec<Expr>, u32),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    Let(String, Expr, u32),
+    ExprStmt(Expr),
+    Print(Vec<Expr>, u32),
+    If(Expr, Vec<Stmt>, Vec<Stmt>),
+    While(Expr, Vec<Stmt>),
+    /// A bare `{ ... }` block introducing its own lexical scope. Also used to
+    /// desugar `for (init; cond; post) body` into
+    /// `{ init; while (cond) { body; post; } }` without a dedicated AST node.
+    Block(Vec<Stmt>),
+    Return(Option<Expr>, u32),
+}
