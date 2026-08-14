@@ -205,3 +205,39 @@ impl<'a> Interpreter<'a> {
             }
         })
     }
+
+    fn call(&mut self, name: &str, args: Vec<Value>, line: u32) -> Result<Value, SfError> {
+        if let Some(v) = crate::builtins::call_builtin(name, &args, line)? {
+            return Ok(v);
+        }
+        let func = self
+            .functions
+            .get(name)
+            .cloned()
+            .ok_or_else(|| SfError::runtime(format!("undefined function '{}'", name), line))?;
+        if func.params.len() != args.len() {
+            return Err(SfError::runtime(
+                format!(
+                    "function '{}' expects {} argument(s), got {}",
+                    name,
+                    func.params.len(),
+                    args.len()
+                ),
+                line,
+            ));
+        }
+        let mut scopes: Scopes = vec![HashMap::new()];
+        for (param, arg) in func.params.iter().zip(args) {
+            scopes[0].insert(param.clone(), arg);
+        }
+        match self.exec_block(&func.body, &mut scopes)? {
+            Flow::Return(v) => Ok(v),
+            Flow::Normal => Ok(Value::Nil),
+        }
+    }
+}
+
+fn expect_number(v: &Value, line: u32) -> Result<f64, SfError> {
+    v.as_number()
+        .ok_or_else(|| SfError::runtime(format!("expected a number, got {}", v.type_name()), line))
+}
