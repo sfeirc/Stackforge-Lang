@@ -72,3 +72,73 @@ impl<'a> Lexer<'a> {
     fn make(&self, kind: TokenKind, line: u32) -> Token {
         Token::new(kind, line)
     }
+
+    fn read_string(&mut self, line: u32) -> Result<Token, SfError> {
+        // opening quote already consumed
+        let mut s = String::new();
+        loop {
+            match self.peek() {
+                0 => return Err(SfError::lex("unterminated string literal", line)),
+                b'"' => {
+                    self.advance();
+                    break;
+                }
+                b'\\' => {
+                    self.advance();
+                    let esc = self.advance();
+                    match esc {
+                        b'n' => s.push('\n'),
+                        b't' => s.push('\t'),
+                        b'"' => s.push('"'),
+                        b'\\' => s.push('\\'),
+                        0 => return Err(SfError::lex("unterminated string literal", line)),
+                        other => {
+                            return Err(SfError::lex(
+                                format!("unknown escape sequence '\\{}'", other as char),
+                                self.line,
+                            ))
+                        }
+                    }
+                }
+                _ => {
+                    // support UTF-8 bytes transparently by pushing raw bytes
+                    // through a small buffer; since we only ever slice on
+                    // ASCII delimiters this is safe.
+                    let start = self.pos;
+                    self.advance();
+                    s.push_str(std::str::from_utf8(&self.src[start..self.pos]).unwrap_or(""));
+                }
+            }
+        }
+        Ok(self.make(TokenKind::Str(s), line))
+    }
+
+    fn read_number(&mut self, line: u32) -> Token {
+        let start = self.pos;
+        while self.peek().is_ascii_digit() {
+            self.advance();
+        }
+        if self.peek() == b'.' && self.peek2().is_ascii_digit() {
+            self.advance();
+            while self.peek().is_ascii_digit() {
+                self.advance();
+            }
+        }
+        let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
+        let n: f64 = text.parse().unwrap();
+        self.make(TokenKind::Number(n), line)
+    }
+
+    fn read_ident(&mut self, line: u32) -> Token {
+        let start = self.pos;
+        while self.peek().is_ascii_alphanumeric() || self.peek() == b'_' {
+            self.advance();
+        }
+        let text = std::str::from_utf8(&self.src[start..self.pos])
+            .unwrap()
+            .to_string();
+        match keyword(&text) {
+            Some(kw) => self.make(kw, line),
+            None => self.make(TokenKind::Ident(text), line),
+        }
+    }
