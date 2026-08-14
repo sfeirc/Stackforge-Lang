@@ -28,3 +28,12 @@ jobs:
         run: cargo fmt --check
       - name: clippy
         run: cargo clippy --all-targets -- -D warnings
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t stackforge .
+      - name: Smoke test
+        run: docker run --rm stackforge
