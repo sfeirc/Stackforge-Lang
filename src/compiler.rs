@@ -278,3 +278,59 @@ impl<'a> FnCompiler<'a> {
         }
         Ok(())
     }
+}
+
+/// Compiles a whole program into a flat function table: index 0 is always
+/// the compiled top-level script, indices 1.. are user `fn` declarations in
+/// declaration order. Two passes: first register every function's name and
+/// arity (so forward references and mutual recursion resolve), then compile
+/// each body against that fully-populated table.
+pub fn compile(program: &Program) -> Result<Vec<Rc<FunctionObj>>, SfError> {
+    let mut func_table: HashMap<String, (usize, usize)> = HashMap::new();
+    for (i, f) in program.functions.iter().enumerate() {
+        if builtins::is_builtin(&f.name) {
+            return Err(SfError::compile(
+                format!("function '{}' shadows a builtin of the same name", f.name),
+                f.line,
+            ));
+        }
+        if func_table.contains_key(&f.name) {
+            return Err(SfError::compile(
+                format!("function '{}' is already defined", f.name),
+                f.line,
+            ));
+        }
+        func_table.insert(f.name.clone(), (i + 1, f.params.len()));
+    }
+
+    let mut functions: Vec<Rc<FunctionObj>> = Vec::with_capacity(program.functions.len() + 1);
+    functions.push(Rc::new(FunctionObj {
+        name: "<script>".to_string(),
+        arity: 0,
+        chunk: Chunk::default(),
+    }));
+
+    for f in &program.functions {
+        let mut fc = FnCompiler::new(&func_table, &f.params);
+        fc.compile_block(&f.body)?;
+        fc.chunk.emit(OpCode::PushNil, f.line);
+        fc.chunk.emit(OpCode::Return, f.line);
+        functions.push(Rc::new(FunctionObj {
+            name: f.name.clone(),
+            arity: f.params.len(),
+            chunk: fc.chunk,
+        }));
+    }
+
+    let mut main_fc = FnCompiler::new(&func_table, &[]);
+    main_fc.compile_block(&program.main)?;
+    main_fc.chunk.emit(OpCode::PushNil, 0);
+    main_fc.chunk.emit(OpCode::Return, 0);
+    functions[0] = Rc::new(FunctionObj {
+        name: "<script>".to_string(),
+        arity: 0,
+        chunk: main_fc.chunk,
+    });
+
+    Ok(functions)
+}
