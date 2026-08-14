@@ -247,3 +247,49 @@ impl<'a> Lexer<'a> {
                         self.make(TokenKind::Gt, line)
                     }
                 }
+                b'&' => {
+                    self.advance();
+                    if self.peek() == b'&' {
+                        self.advance();
+                        self.make(TokenKind::AndAnd, line)
+                    } else {
+                        return Err(SfError::lex(
+                            "unexpected character '&' (did you mean '&&'?)",
+                            line,
+                        ));
+                    }
+                }
+                b'|' => {
+                    self.advance();
+                    if self.peek() == b'|' {
+                        self.advance();
+                        self.make(TokenKind::OrOr, line)
+                    } else {
+                        return Err(SfError::lex(
+                            "unexpected character '|' (did you mean '||'?)",
+                            line,
+                        ));
+                    }
+                }
+                b'"' => {
+                    self.advance();
+                    self.read_string(line)?
+                }
+                c if c.is_ascii_digit() => self.read_number(line),
+                c if c.is_ascii_alphabetic() || c == b'_' => self.read_ident(line),
+                other => {
+                    return Err(SfError::lex(
+                        format!("unexpected character '{}'", other as char),
+                        line,
+                    ))
+                }
+            };
+            out.push(tok);
+        }
+        Ok(out)
+    }
+}
+
+pub fn lex(src: &str) -> Result<Vec<Token>, SfError> {
+    Lexer::new(src).tokenize()
+}
