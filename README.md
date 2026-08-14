@@ -6,6 +6,10 @@ A complete, small programming language: lexer → Pratt parser → **two indepen
 ![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## Why this matters
+
+Building a complete language from scratch — a lexer, a Pratt parser, a tree-walking interpreter, and a stack-based bytecode VM you can benchmark against each other — is the same underlying skill set behind the internal DSLs nearly every serious engineering organization eventually needs: a rules DSL for a fraud-detection engine, a query language for an internal data platform, a policy/config language for infrastructure. That's directly relevant to tech/AI roles touching compilers and developer tooling, to quant/finance systems where a proprietary strategy or rules DSL often sits behind the trading logic, and to consulting engagements where a client's business rules get formalized into a small language of their own. This project isn't used in any of those settings — what it demonstrates is the mechanism: a genuine interpreter and a genuine compiler/VM pair, sharing one AST, verified to agree with each other exactly, and benchmarked against each other rather than just asserted to be "faster."
+
 ## The language
 
 Variables, numbers/booleans/strings, arrays and hash maps, `if`/`else`, `while`, C-style `for`, functions with parameters and return values (full recursion, including mutual recursion), arithmetic/comparison/logical operators with correct precedence, and a `print` statement.
