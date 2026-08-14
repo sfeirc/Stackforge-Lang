@@ -293,3 +293,118 @@ impl<'a> Lexer<'a> {
 pub fn lex(src: &str) -> Result<Vec<Token>, SfError> {
     Lexer::new(src).tokenize()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenizes_arithmetic_expression_with_correct_kinds() {
+        let toks = lex("1 + 2 * (3 - 4) / 5;").unwrap();
+        let kinds: Vec<TokenKind> = toks.into_iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Number(1.0),
+                TokenKind::Plus,
+                TokenKind::Number(2.0),
+                TokenKind::Star,
+                TokenKind::LParen,
+                TokenKind::Number(3.0),
+                TokenKind::Minus,
+                TokenKind::Number(4.0),
+                TokenKind::RParen,
+                TokenKind::Slash,
+                TokenKind::Number(5.0),
+                TokenKind::Semicolon,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenizes_keywords_and_identifiers_distinctly() {
+        let toks = lex("let fib = fn;").unwrap();
+        let kinds: Vec<TokenKind> = toks.into_iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Let,
+                TokenKind::Ident("fib".to_string()),
+                TokenKind::Assign,
+                TokenKind::Fn,
+                TokenKind::Semicolon,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenizes_string_with_escapes() {
+        let toks = lex("\"hello\\nworld\"").unwrap();
+        assert_eq!(toks[0].kind, TokenKind::Str("hello\nworld".to_string()));
+    }
+
+    #[test]
+    fn tokenizes_comparison_and_logical_operators() {
+        let toks = lex("a <= b && c != d || !e").unwrap();
+        let kinds: Vec<TokenKind> = toks.into_iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Ident("a".into()),
+                TokenKind::LtEq,
+                TokenKind::Ident("b".into()),
+                TokenKind::AndAnd,
+                TokenKind::Ident("c".into()),
+                TokenKind::NotEq,
+                TokenKind::Ident("d".into()),
+                TokenKind::OrOr,
+                TokenKind::Bang,
+                TokenKind::Ident("e".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn line_numbers_advance_across_newlines() {
+        let toks = lex("let a = 1;\nlet b = 2;\nlet c = 3;").unwrap();
+        // find token for 'c' (3rd let statement) -> should be on line 3
+        let c_tok = toks
+            .iter()
+            .find(|t| t.kind == TokenKind::Ident("c".to_string()))
+            .unwrap();
+        assert_eq!(c_tok.line, 3);
+    }
+
+    #[test]
+    fn comments_are_skipped() {
+        let toks = lex("1 // this is a comment\n+ 2").unwrap();
+        let kinds: Vec<TokenKind> = toks.into_iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Number(1.0),
+                TokenKind::Plus,
+                TokenKind::Number(2.0),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn unterminated_string_reports_lex_error_with_line() {
+        let err = lex("\"unterminated").unwrap_err();
+        match err {
+            SfError::Lex { line, .. } => assert_eq!(line, 1),
+            _ => panic!("expected Lex error"),
+        }
+    }
+
+    #[test]
+    fn unexpected_character_reports_lex_error() {
+        let err = lex("let x = 1 @ 2;").unwrap_err();
+        assert!(matches!(err, SfError::Lex { .. }));
+    }
+}
