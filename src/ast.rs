@@ -59,3 +59,17 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     Return(Option<Expr>, u32),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionDecl {
+    pub name: String,
+    pub params: Vec<String>,
+    pub body: Vec<Stmt>,
+    pub line: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Program {
+    pub functions: Vec<FunctionDecl>,
+    pub main: Vec<Stmt>,
+}

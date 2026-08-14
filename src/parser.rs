@@ -92,3 +92,53 @@ impl Parser {
             )),
         }
     }
+
+    // ---------------------------------------------------------------- //
+    // Program / declarations
+    // ---------------------------------------------------------------- //
+
+    pub fn parse_program(&mut self) -> Result<Program, SfError> {
+        let mut program = Program::default();
+        while !self.is_eof() {
+            if self.check(&TokenKind::Fn) {
+                program.functions.push(self.parse_function_decl()?);
+            } else {
+                program.main.push(self.parse_statement()?);
+            }
+        }
+        Ok(program)
+    }
+
+    fn parse_function_decl(&mut self) -> Result<FunctionDecl, SfError> {
+        let line = self.line();
+        self.advance(); // 'fn'
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LParen, "'(' after function name")?;
+        let mut params = Vec::new();
+        if !self.check(&TokenKind::RParen) {
+            loop {
+                params.push(self.expect_ident()?);
+                if !self.match_tok(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.expect(&TokenKind::RParen, "')' after parameter list")?;
+        let body = self.parse_block()?;
+        Ok(FunctionDecl {
+            name,
+            params,
+            body,
+            line,
+        })
+    }
+
+    fn parse_block(&mut self) -> Result<Vec<Stmt>, SfError> {
+        self.expect(&TokenKind::LBrace, "'{'")?;
+        let mut stmts = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.is_eof() {
+            stmts.push(self.parse_statement()?);
+        }
+        self.expect(&TokenKind::RBrace, "'}'")?;
+        Ok(stmts)
+    }
