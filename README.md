@@ -89,6 +89,10 @@ docker run --rm stackforge   # runs examples/demo.sf by default
 - **No static type system.** Everything is dynamically typed and checked at runtime (division by zero, wrong argument counts, etc. are runtime errors, not compile errors), matching languages like Python/Ruby rather than a statically-typed language.
 - **Small instruction set / standard library.** A handful of built-ins (`src/builtins.rs`), no modules/imports, no string formatting beyond concatenation.
 
+## A note on this repo's commit history
+
+This repo's git history was reorganized after the fact into feature-scoped commits (lexer → parser → interpreter → compiler → VM → tests → CI → docs) for readability. The code and the calendar date of development are authentic; the commit-by-commit timestamps and granularity were reconstructed to reflect the real build order, not recorded as they happened.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
